@@ -1,0 +1,20 @@
+GET http://localhost:3000/products
+
+GET http://localhost:3000/products/1
+
+POST http://localhost:3000/products
+Content-Type: application/json
+
+{
+    "name": "Наушники",
+    "price": 5000
+}
+
+PATCH http://localhost:3000/products/1
+Content-Type: application/json
+
+{
+    "price": 3000
+}
+
+DELETE http://localhost:3000/products/2
