@@ -1,0 +1,59 @@
+@host = http://localhost:3000
+@api = {{host}}/api
+
+### 1) GET all products
+GET {{api}}/products
+
+
+### 2) GET product by id (вставь id после первого запроса)
+@id = XagNfmfrjjpMuFaCT5eYn
+GET {{api}}/products/{{id}}
+
+
+### 3) POST create product
+POST {{api}}/products
+Content-Type: application/json
+
+{
+  "title": "Test товар",
+  "category": "Аксессуары",
+  "description": "Тестовое описание",
+  "price": 1000,
+  "stock": 5,
+  "rating": 4.5,
+  "image": "https://pisskiss300x200.com"
+}
+
+
+### 4) PATCH update product
+PATCH {{api}}/products/{{id}}
+Content-Type: application/json
+
+{
+  "price": 1500,
+  "stock": 8
+}
+
+
+### 5) DELETE product
+DELETE {{api}}/products/{{id}}
+
+
+### 6) External API - Moscow weather
+GET https://api.open-meteo.com/v1/forecast?latitude=55.7558&longitude=37.6173&current_weather=true
+
+
+### 7) External API - Saint Petersburg
+GET https://api.open-meteo.com/v1/forecast?latitude=59.9311&longitude=30.3609&current_weather=true
+
+
+### 8) External API - Kazan
+GET https://api.open-meteo.com/v1/forecast?latitude=55.7961&longitude=49.1064&current_weather=true
+
+
+### 9) External API - Novosibirsk
+GET https://api.open-meteo.com/v1/forecast?latitude=55.0084&longitude=82.9357&current_weather=true
+
+
+### 10) External API - Sochi
+GET https://api.open-meteo.com/v1/forecast?latitude=43.5855&longitude=39.7231&current_weather=true
