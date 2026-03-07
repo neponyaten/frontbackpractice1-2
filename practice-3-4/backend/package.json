@@ -6,8 +6,11 @@
     "start": "node app.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "express": "^4.22.1",
+    "jsonwebtoken": "^9.0.3",
     "nanoid": "^5.1.6"
   },
   "devDependencies": {
