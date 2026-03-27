@@ -7,28 +7,56 @@ import "./index.css";
 export default function App() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
+  const [offlineMode, setOfflineMode] = useState(false);
+
+  function cacheUser(nextUser) {
+    if (nextUser) {
+      localStorage.setItem("cachedUser", JSON.stringify(nextUser));
+      return;
+    }
+
+    localStorage.removeItem("cachedUser");
+  }
+
+  function applyUser(nextUser) {
+    setUser(nextUser);
+    cacheUser(nextUser);
+  }
 
   async function checkAuth() {
     let token = localStorage.getItem("token");
+    const cachedUserRaw = localStorage.getItem("cachedUser");
+    const cachedUser = cachedUserRaw ? JSON.parse(cachedUserRaw) : null;
 
     if (!token) {
+      if (!navigator.onLine && cachedUser) {
+        setOfflineMode(true);
+        setUser(cachedUser);
+      }
       setChecking(false);
       return;
     }
 
     try {
       const me = await getMe(token);
-      setUser(me);
+      setOfflineMode(false);
+      applyUser(me);
     } catch (error) {
       try {
         const refreshed = await refreshAccessToken();
         localStorage.setItem("token", refreshed.accessToken);
 
         const me = await getMe(refreshed.accessToken);
-        setUser(me);
+        setOfflineMode(false);
+        applyUser(me);
       } catch {
-        localStorage.removeItem("token");
-        setUser(null);
+        if (!navigator.onLine && cachedUser) {
+          setOfflineMode(true);
+          setUser(cachedUser);
+        } else {
+          localStorage.removeItem("token");
+          applyUser(null);
+        }
       }
     } finally {
       setChecking(false);
@@ -50,7 +78,8 @@ export default function App() {
       console.error(e);
     } finally {
       localStorage.removeItem("token");
-      setUser(null);
+      setOfflineMode(false);
+      applyUser(null);
     }
   }
 
@@ -63,8 +92,8 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPage onLogin={setUser} />;
+    return <AuthPage onLogin={applyUser} />;
   }
 
-  return <ProductsPage user={user} onLogout={handleLogout} />;
+  return <ProductsPage user={user} onLogout={handleLogout} offlineMode={offlineMode} />;
 }

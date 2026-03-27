@@ -43,6 +43,7 @@ export default function AuthPage({ onLogin }) {
     try {
       const data = await loginUser(loginForm);
       localStorage.setItem("token", data.accessToken);
+      localStorage.setItem("cachedUser", JSON.stringify(data.user));
       onLogin(data.user);
     } catch (error) {
       setMessage(error.message);

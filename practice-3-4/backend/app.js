@@ -1,4 +1,6 @@
+const crypto = require("crypto");
 const express = require("express");
+const http = require("http");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -7,6 +9,7 @@ const { nanoid } = require("nanoid");
 const swaggerUi = require("swagger-ui-express");
 
 const app = express();
+const server = http.createServer(app);
 const PORT = 3000;
 
 const ACCESS_SECRET = "access_secret_key_123";
@@ -77,6 +80,7 @@ let sessions = [];
 
 // Blacklist для access token
 let tokenBlacklist = [];
+const wsClients = new Set();
 
 // ===== Helpers =====
 function isNumber(value) {
@@ -113,6 +117,77 @@ function cleanupBlacklist() {
 function cleanupSessions() {
   const now = Date.now();
   sessions = sessions.filter((s) => !s.isRevoked && s.expiresAt > now);
+}
+
+function createWebSocketAccept(key) {
+  return crypto
+    .createHash("sha1")
+    .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest("base64");
+}
+
+function createFrame(payload) {
+  const json = Buffer.from(JSON.stringify(payload));
+
+  if (json.length < 126) {
+    return Buffer.concat([Buffer.from([0x81, json.length]), json]);
+  }
+
+  if (json.length < 65536) {
+    const header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(json.length, 2);
+    return Buffer.concat([header, json]);
+  }
+
+  const header = Buffer.alloc(10);
+  header[0] = 0x81;
+  header[1] = 127;
+  header.writeBigUInt64BE(BigInt(json.length), 2);
+  return Buffer.concat([header, json]);
+}
+
+function sendWs(socket, payload) {
+  if (socket.destroyed || !socket.writable) {
+    wsClients.delete(socket);
+    return;
+  }
+
+  socket.write(createFrame(payload));
+}
+
+function broadcastWs(payload) {
+  for (const socket of wsClients) {
+    sendWs(socket, payload);
+  }
+}
+
+function broadcastProductEvent(type, payload, actor = "system") {
+  const actionMap = {
+    "product:created": "создан",
+    "product:updated": "обновлён",
+    "product:deleted": "удалён",
+  };
+
+  const title =
+    type === "product:deleted"
+      ? "Товар удалён"
+      : type === "product:updated"
+        ? "Товар обновлён"
+        : "Новый товар";
+
+  const subject =
+    payload.product?.title || payload.productTitle || "товар";
+
+  broadcastWs({
+    type,
+    ...payload,
+    notification: {
+      title,
+      body: `${subject} ${actionMap[type] || "изменён"} пользователем ${actor}.`,
+    },
+  });
 }
 
 function generateAccessToken(user) {
@@ -912,6 +987,7 @@ app.post(
     };
 
     products.unshift(newProduct);
+    broadcastProductEvent("product:created", { product: newProduct }, req.user.email);
     res.status(201).json(newProduct);
   }
 );
@@ -978,6 +1054,7 @@ app.patch(
       product.image = image;
     }
 
+    broadcastProductEvent("product:updated", { product }, req.user.email);
     res.json(product);
   }
 );
@@ -993,7 +1070,13 @@ app.delete(
       return res.status(404).json({ message: "Товар не найден" });
     }
 
+    const deletedProduct = products[idx];
     products.splice(idx, 1);
+    broadcastProductEvent(
+      "product:deleted",
+      { productId: req.params.id, productTitle: deletedProduct.title },
+      req.user.email
+    );
     res.status(204).send();
   }
 );
@@ -1010,7 +1093,48 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(PORT, () => {
+server.on("upgrade", (req, socket) => {
+  if (req.url !== "/ws") {
+    socket.destroy();
+    return;
+  }
+
+  const websocketKey = req.headers["sec-websocket-key"];
+
+  if (!websocketKey) {
+    socket.destroy();
+    return;
+  }
+
+  const acceptKey = createWebSocketAccept(websocketKey);
+
+  socket.write(
+    [
+      "HTTP/1.1 101 Switching Protocols",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      `Sec-WebSocket-Accept: ${acceptKey}`,
+      "\r\n",
+    ].join("\r\n")
+  );
+
+  wsClients.add(socket);
+  sendWs(socket, { type: "products:snapshot", products });
+
+  socket.on("error", () => {
+    wsClients.delete(socket);
+  });
+
+  socket.on("end", () => {
+    wsClients.delete(socket);
+  });
+
+  socket.on("close", () => {
+    wsClients.delete(socket);
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`🚀 Backend: http://localhost:${PORT}`);
   console.log(`📚 Swagger: http://localhost:${PORT}/api-docs`);
   console.log(`👤 Admin login: admin@test.com / admin123`);
